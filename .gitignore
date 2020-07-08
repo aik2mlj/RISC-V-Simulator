@@ -1,0 +1,7 @@
+build
+doc
+riscv-data
+riscv-testcases
+.vscode
+*.exe
+try.cpp
