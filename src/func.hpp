@@ -6,16 +6,18 @@
 #include <iomanip>
 #include "type.hpp"
 #include "mem.hpp"
+#define debug std::cerr
 
 class Instruction_Fetcher {
 public:
     CMD fetch(Register &reg, const Memory &mem) {
+        // debug << std::hex << reg.pc << std::endl;
         CMD newcmd;
         newcmd.in.o1 = mem[reg.pc++];
         newcmd.in.o2 = mem[reg.pc++];
         newcmd.in.o3 = mem[reg.pc++];
         newcmd.in.o4 = mem[reg.pc++];
-        // std::cerr << std::setw(8) << std::setfill('0') << std::hex << newcmd.data << std::endl;
+        // std::cerr << std::setw(8) << std::setfill('0') << std::hex << newcmd.data << '\t';
         return newcmd;
     }
 };
@@ -25,7 +27,7 @@ class Instruction_Decorder {
 
 public:
     Instruction decode(const CMD &cmd, const Register &reg) {
-        Instruction ret;
+        Instruction ret(cmd);
         switch(cmd.B.opcode) {
         case 0b0110111:
             ret.rough = LUI;
@@ -69,6 +71,9 @@ public:
         ret.rs1 = reg[cmd.B.rs1];
         ret.rs2 = reg[cmd.B.rs2];
         ret.pc = reg.pc;
+
+        // debug << ROUGH_NAMEs[ret.rough] << " " << ret.fine << " " << std::hex << ret.imm << " " << cmd.B.rs1 << "#" << ret.rs1 << " " << cmd.B.rs2 << "#" << ret.rs2 << std::endl;
+
         return ret;
     }
 };
@@ -97,37 +102,38 @@ public:
             ret.ans = inst.imm;
             break;
         case AUIPC:
-            ret.new_pc += inst.imm;
             ret.ans = ret.new_pc;
+            ret.new_pc += inst.imm - 4;
             break;
         case JAL:
-            ret.new_pc += inst.imm;
-            ret.ans = ret.new_pc + 4;
+            ret.ans = ret.new_pc;
+            ret.new_pc += inst.imm - 4;
+            // debug << "ra: " << ret.ans << std::endl;
             break;
         case JALR:
-            ret.new_pc = (inst.imm + inst.rs1) & 0;
-            ret.ans = ret.new_pc + 4;
+            ret.ans = ret.new_pc;
+            ret.new_pc = ((inst.imm + inst.rs1) >> 1) << 1; // set the least bit to 0
             break;
 
         case B_func:
             switch((B_FUNCs)inst.fine) {
             case BEQ:
-                if(inst.rs1 == inst.rs2) ret.new_pc += inst.imm;
+                if(inst.rs1 == inst.rs2) ret.new_pc += inst.imm - 4;
                 break;
             case BNE:
-                if(inst.rs1 != inst.rs2) ret.new_pc += inst.imm;
+                if(inst.rs1 != inst.rs2) ret.new_pc += inst.imm - 4;
                 break;
             case BLT:
-                if(inst.rs1 < inst.rs2) ret.new_pc += inst.imm;
+                if(inst.rs1 < inst.rs2) ret.new_pc += inst.imm - 4;
                 break;
             case BGE:
-                if(inst.rs1 >= inst.rs2) ret.new_pc += inst.imm;
+                if(inst.rs1 >= inst.rs2) ret.new_pc += inst.imm - 4;
                 break;
             case BLTU:
-                if((uint)inst.rs1 < (uint)inst.rs2) ret.new_pc += inst.imm;
+                if((uint)inst.rs1 < (uint)inst.rs2) ret.new_pc += inst.imm - 4;
                 break;
             case BGEU:
-                if((uint)inst.rs1 >= (uint)inst.rs2) ret.new_pc += inst.imm;
+                if((uint)inst.rs1 >= (uint)inst.rs2) ret.new_pc += inst.imm - 4;
                 break;
             }
             break;
@@ -277,9 +283,13 @@ class Write_Backer {    // excellent name though
 public:
     void write(const Instruction &inst, MEM_WB mem_wb, Register &reg) {
         reg.pc = mem_wb.new_pc; // write back pc
-        int rd = inst.cmd.R.rd;
-        if(inst.rough != B_func && inst.rough != STORE_func)
-            reg[rd] = mem_wb.data;
+        uint rd = inst.cmd.R.rd;
+        if(inst.rough != B_func && inst.rough != STORE_func) {
+            if(rd) reg[rd] = mem_wb.data; // discard modification on x0
+            // debug << rd << "#" << reg[rd] << std::endl;
+        }
+        // debug << "new_pc: " << reg.pc << std::endl << std::endl;
+        // debug << std::endl;
     }
 };
 
