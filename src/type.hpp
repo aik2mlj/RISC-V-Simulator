@@ -132,12 +132,12 @@ public:
     int imm;           // immediate number
     int rs1, rs2;      // store the VALUE of rs1, rs2
 
-    uint pc;
+    int branch_return;
 
     Instruction(const CMD &_cmd) {
         cmd = _cmd;
         imm = rs1 = rs2 = 0;
-        pc = 0;
+        branch_return = 0;
     }
 };
 

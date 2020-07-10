@@ -26,8 +26,11 @@ class Instruction_Decorder {
     static const int OPCODE[9];
 
 public:
-    Instruction decode(const CMD &cmd, const Register &reg) {
+    Instruction decode(const CMD &cmd, Register &reg) {
         Instruction ret(cmd);
+        ret.fine = cmd.B.funct3;
+        ret.rs1 = reg[cmd.B.rs1];
+        ret.rs2 = reg[cmd.B.rs2];
         switch(cmd.B.opcode) {
         case 0b0110111:
             ret.rough = LUI;
@@ -36,18 +39,45 @@ public:
         case 0b0010111:
             ret.rough = AUIPC;
             ret.imm = cmd.U.getImm();
+            reg.pc += ret.imm - 4;
+            ret.branch_return = reg.pc; // adds this offset to the pc, then places the result in register rd.
             break;
         case 0b1101111:
             ret.rough = JAL;
             ret.imm = cmd.J.getImm();
+            ret.branch_return = reg.pc;
+            reg.pc += ret.imm - 4;
+            // debug << "ra: " << ret.ans << std::endl;
             break;
         case 0b1100111:
             ret.rough = JALR;
             ret.imm = cmd.I.getImm();
+            ret.branch_return = reg.pc;
+            reg.pc = ((ret.imm + ret.rs1) >> 1) << 1; // set the least bit to 0
             break;
-        case 0b1100011:
+        case 0b1100011: // finish the branch inst at this stage
             ret.rough = B_func;
             ret.imm = cmd.B.getImm();
+            switch((B_FUNCs)ret.fine) {
+            case BEQ:
+                if(ret.rs1 == ret.rs2) reg.pc += ret.imm - 4;
+                break;
+            case BNE:
+                if(ret.rs1 != ret.rs2) reg.pc += ret.imm - 4;
+                break;
+            case BLT:
+                if(ret.rs1 < ret.rs2) reg.pc += ret.imm - 4;
+                break;
+            case BGE:
+                if(ret.rs1 >= ret.rs2) reg.pc += ret.imm - 4;
+                break;
+            case BLTU:
+                if((uint)ret.rs1 < (uint)ret.rs2) reg.pc += ret.imm - 4;
+                break;
+            case BGEU:
+                if((uint)ret.rs1 >= (uint)ret.rs2) reg.pc += ret.imm - 4;
+                break;
+            }
             break;
         case 0b0000011:
             ret.rough = LOAD_func;
@@ -67,10 +97,6 @@ public:
         default:
             assert(0); break;
         }
-        ret.fine = cmd.B.funct3;
-        ret.rs1 = reg[cmd.B.rs1];
-        ret.rs2 = reg[cmd.B.rs2];
-        ret.pc = reg.pc;
 
         // debug << ROUGH_NAMEs[ret.rough] << " " << ret.fine << " " << std::hex << ret.imm << " " << cmd.B.rs1 << "#" << ret.rs1 << " " << cmd.B.rs2 << "#" << ret.rs2 << std::endl;
 
@@ -88,54 +114,23 @@ const int Instruction_Decorder::OPCODE[] = {
 
 class EX_MEM { // connect EX & MEM
 public:
-    uint new_pc;
     int ans;
-    EX_MEM(const uint _pc) { new_pc = _pc; ans = 0; }
+    EX_MEM() { ans = 0; }
 };
 
 class Executor {
 public:
     EX_MEM exec(const Instruction &inst) {
-        EX_MEM ret(inst.pc);
+        EX_MEM ret;
         switch(inst.rough) {
         case LUI:
             ret.ans = inst.imm;
             break;
         case AUIPC:
-            ret.ans = ret.new_pc;
-            ret.new_pc += inst.imm - 4;
-            break;
         case JAL:
-            ret.ans = ret.new_pc;
-            ret.new_pc += inst.imm - 4;
-            // debug << "ra: " << ret.ans << std::endl;
-            break;
         case JALR:
-            ret.ans = ret.new_pc;
-            ret.new_pc = ((inst.imm + inst.rs1) >> 1) << 1; // set the least bit to 0
-            break;
-
         case B_func:
-            switch((B_FUNCs)inst.fine) {
-            case BEQ:
-                if(inst.rs1 == inst.rs2) ret.new_pc += inst.imm - 4;
-                break;
-            case BNE:
-                if(inst.rs1 != inst.rs2) ret.new_pc += inst.imm - 4;
-                break;
-            case BLT:
-                if(inst.rs1 < inst.rs2) ret.new_pc += inst.imm - 4;
-                break;
-            case BGE:
-                if(inst.rs1 >= inst.rs2) ret.new_pc += inst.imm - 4;
-                break;
-            case BLTU:
-                if((uint)inst.rs1 < (uint)inst.rs2) ret.new_pc += inst.imm - 4;
-                break;
-            case BGEU:
-                if((uint)inst.rs1 >= (uint)inst.rs2) ret.new_pc += inst.imm - 4;
-                break;
-            }
+            ret.ans = inst.branch_return; // if it's a branch inst, the return value is the branch_return
             break;
 
         case LOAD_func:
@@ -213,15 +208,14 @@ public:
 
 class MEM_WB { // connect MEM & WB
 public:
-    uint new_pc;
     int data;
-    MEM_WB(const uint _pc) { new_pc = _pc; data = 0; }
+    MEM_WB() { data = 0; }
 };
 
 class Memory_Accesser {
 public:
     MEM_WB access(const Instruction &inst, EX_MEM ex_mem, Memory &mem) {
-        MEM_WB ret(ex_mem.new_pc);
+        MEM_WB ret;
         ret.data = ex_mem.ans; // inherit the ans
         CMD tmp;
         switch(inst.rough) {
@@ -282,7 +276,6 @@ public:
 class Write_Backer {    // excellent name though
 public:
     void write(const Instruction &inst, MEM_WB mem_wb, Register &reg) {
-        reg.pc = mem_wb.new_pc; // write back pc
         uint rd = inst.cmd.R.rd;
         if(inst.rough != B_func && inst.rough != STORE_func) {
             if(rd) reg[rd] = mem_wb.data; // discard modification on x0
