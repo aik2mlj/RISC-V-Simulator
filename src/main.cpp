@@ -10,8 +10,6 @@ using std::cout;
 using std::endl;
 using std::hex;
 
-const int END_CMD = 0x0ff00513;
-
 //************* global vars *************
 Register _reg_;
 Memory _mem_;
@@ -21,23 +19,35 @@ int main() {
     Instruction_Fetcher IF;
     Instruction_Decorder ID;
     Executor EX;
-    Memory_Accesser MA;
+    Memory_Accesser MEM;
     Write_Backer WB;
+
+    Pipeline_Register PR;
+    Pipeline_Register PR_tmp;
+
+    bool used[4] = {0}; // whether or not an inst is in pipeline
+
+    Register reg_tmp; // simulate the "simutaneous" pipeline by modifying reg_tmp in stages rather than write into _reg_ directly
 
     _mem_.init(cin);
     while(true) {
-        auto cmd = IF.fetch(_reg_, _mem_);
-        if(cmd.data == END_CMD) {
-            cout << (((uint)_reg_[10]) & 255u) << endl;
-            break;
+        // debug << PR.clock << " ------------" << endl;
+        ++PR.clock;
+
+        try {
+            WB.write(PR, reg_tmp);
+            PR_tmp.mem_wb = MEM.access(PR, PR_tmp, _mem_);
+            PR_tmp.ex_mem = EX.exec(PR, PR_tmp);
+            ID.decode(PR, PR_tmp, _reg_, reg_tmp);
+            if(!PR.end_flag) PR_tmp.if_id = IF.fetch(PR, _reg_, reg_tmp, _mem_);
+        } catch(stall_throw &_throw) {
+            PR_tmp.stalled = _throw.stall_num;
         }
-        auto inst = ID.decode(cmd, _reg_);
-        auto ex_mem_tmp = EX.exec(inst);
-        // std::cerr << "ex_mem.ans: " << ex_mem_tmp.ans << endl;
-        auto mem_wb_tmp = MA.access(inst, ex_mem_tmp, _mem_);
-        // std::cerr << "mem_wb.ans: " << mem_wb_tmp.data << endl;
-        WB.write(inst, mem_wb_tmp, _reg_);
-        // std::cerr << "wriiten ra:" << _reg_[1] << endl;
+
+        _reg_ = reg_tmp;
+        PR = PR_tmp;
+        if(PR.end_flag && PR.mem_wb.inst.cmd.data == 0u) break; // have done the last WB: quit
     }
+    cout << std::dec << (((uint)_reg_[10]) & 255u) << endl;
     return 0;
 }

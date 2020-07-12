@@ -16,6 +16,7 @@ union CMD {
         return is;
     }
     CMD() { data = 0; }
+    CMD(uint _data) { data = _data; }
 
     unsigned int data;
     struct IN {
@@ -98,6 +99,7 @@ union CMD {
     }J;
 
 };
+const uint END_CMD = 0x0ff00513;
 
 // enum TYPE {
 //     R_, I_, S_, B_, U_, J_
@@ -108,7 +110,9 @@ enum ROUGH_FUNCs { // roughly classify the instruction type
     LOAD_func,
     STORE_func,
     R_I_func,
-    R_R_func
+    R_R_func,
+    STALLED_func,
+    STALLED2_func
 };
 const char ROUGH_NAMEs[][11] = {
     "LUI", "AUIPC", "JAL", "JALR",
@@ -124,6 +128,14 @@ enum STORE_FUNCs { SB = 0, SH, SW };
 enum R_I_FUNCs { ADDI = 0, SLLI, SLTI, SLTIU, XORI, SRLI_SRAI, ORI, ANDI };
 enum R_R_FUNCs { ADD_SUB = 0, SLL, SLT, SLTU, XOR, SRL_SRA, OR, AND };
 
+class IF_ID {
+public:
+    CMD cmd;
+    uint new_pc;
+    IF_ID() { cmd.data = 0u; new_pc = 0;}
+    IF_ID(const CMD &_) { cmd = _; new_pc = 0; }
+};
+
 class Instruction {
 public:
     CMD cmd;
@@ -131,14 +143,55 @@ public:
     uint fine;         // fine type in accord with XX_FUNCs
     int imm;           // immediate number
     int rs1, rs2;      // store the VALUE of rs1, rs2
-
+    bool cond;         // whether the branch is taken
     int branch_return;
+    uint new_pc;
 
-    Instruction(const CMD &_cmd) {
-        cmd = _cmd;
+    Instruction(): cmd(0u) {
+        cond = 0;
         imm = rs1 = rs2 = 0;
         branch_return = 0;
+        new_pc = 0;
+    }
+    Instruction(const IF_ID &_if_id) {
+        cmd = _if_id.cmd;
+        cond = 0;
+        imm = rs1 = rs2 = 0;
+        branch_return = 0;
+        new_pc = _if_id.new_pc;
     }
 };
+
+const Instruction NOP(IF_ID(CMD(19u))); // NOP = ADDI x0 x0 0
+
+class EX_MEM { // connect EX & MEM
+public:
+    Instruction inst;
+    uint addr;
+    int ans;
+    EX_MEM() = default;
+    EX_MEM(const Instruction &_inst): inst(_inst) { addr = 0; ans = 0; }
+};
+
+class MEM_WB { // connect MEM & WB
+public:
+    Instruction inst;
+    int data;
+    MEM_WB() = default;
+    MEM_WB(const Instruction &_inst): inst(_inst) { data = 0; }
+};
+
+class Pipeline_Register {
+public:
+    IF_ID if_id;
+    Instruction id_ex;
+    EX_MEM ex_mem;
+    MEM_WB mem_wb;
+
+    uint clock = 0;
+    uint stalled = 0;
+    bool end_flag = 0;
+};
+
 
 #endif
