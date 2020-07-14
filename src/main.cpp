@@ -27,7 +27,7 @@ int main() {
 
     bool used[4] = {0}; // whether or not an inst is in pipeline
 
-    Register reg_tmp; // simulate the "simutaneous" pipeline by modifying reg_tmp in stages rather than write into _reg_ directly
+    Register_Tmp reg_tmp; // simulate the "simutaneous" pipeline by modifying reg_tmp in stages rather than write into _reg_ directly
 
     _mem_.init(cin);
     while(true) {

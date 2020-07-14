@@ -17,7 +17,7 @@ public:
 
 class Instruction_Fetcher {
 public:
-    IF_ID fetch(const Pipeline_Register &new_pr, const Register &reg, Register &new_reg, const Memory &mem) {
+    IF_ID fetch(const Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, const Memory &mem) {
 
         // debug << "Fetching..." << std::endl;
         IF_ID ret;
@@ -27,15 +27,15 @@ public:
         ret.cmd.in.o3 = (uint)mem[ret.new_pc++];
         ret.cmd.in.o4 = (uint)mem[ret.new_pc++];
         new_reg.pc = ret.new_pc;
-        switch(new_pr.id_ex.rough) {
-        case AUIPC:
-        case JAL:
-        case JALR:
-            return ret;
-        case B_func:
-            if(new_pr.id_ex.cond) return ret;
-        default: break;
-        }
+        // switch(new_pr.id_ex.rough) {
+        // case AUIPC:
+        // case JAL:
+        // case JALR:
+        //     return ret;
+        // case B_func:
+        //     if(new_pr.id_ex.cond) return ret;
+        // default: break;
+        // }
         // debug << "pc: " << std::hex << reg.pc << '\t';
         // debug << std::setw(8) << std::setfill('0') << std::hex << ret.cmd.data << std::endl;
 
@@ -47,7 +47,7 @@ class Instruction_Decorder {
     static const int OPCODE[9];
 
 public:
-    Instruction decode(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register &new_reg) {
+    Instruction decode(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg) {
         if(pr.if_id.cmd.data == 0u) return new_pr.id_ex = Instruction(CMD(0u));
         if(pr.stalled == 1) { // stalled IF, in the next round don't do ID
             new_pr.stalled = 0;
@@ -265,18 +265,15 @@ public:
 
         switch(cmd.B.opcode) {
         case 0b0110111:
-            ret.rough = LUI;
             ret.imm = cmd.U.getImm();
             break;
         case 0b0010111:
-            ret.rough = AUIPC;
             ret.imm = cmd.U.getImm();
             new_reg.pc += ret.imm - 4;
             ret.cond = 1;
             ret.branch_return = new_reg.pc; // adds this offset to the pc, then places the result in register rd.
             break;
         case 0b1101111:
-            ret.rough = JAL;
             ret.imm = cmd.J.getImm();
             ret.branch_return = reg.pc;
             new_reg.pc += ret.imm - 4;
@@ -284,14 +281,12 @@ public:
             ret.cond = 1;
             break;
         case 0b1100111:
-            ret.rough = JALR;
             ret.imm = cmd.I.getImm();
             ret.branch_return = reg.pc;
             new_reg.pc = ((ret.imm + ret.rs1) >> 1) << 1; // set the least bit to 0
             ret.cond = 1;
             break;
         case 0b1100011: // finish the branch inst at this stage
-            ret.rough = B_func;
             ret.imm = cmd.B.getImm();
             switch((B_FUNCs)ret.fine) {
             case BEQ:
@@ -315,19 +310,15 @@ public:
             }
             break;
         case 0b0000011:
-            ret.rough = LOAD_func;
             ret.imm = cmd.I.getImm();
             break;
         case 0b0100011:
-            ret.rough = STORE_func;
             ret.imm = cmd.S.getImm();
             break;
         case 0b0010011:
-            ret.rough = R_I_func;
             ret.imm = cmd.I.getImm();
             break;
         case 0b0110011:
-            ret.rough = R_R_func; // no Imm
             break;
         default:
             // debug << std::bitset<7>(cmd.B.opcode) << std::endl;
@@ -337,7 +328,7 @@ public:
 
         // debug << ROUGH_NAMEs[ret.rough] << " " << ret.fine << " " << std::hex << " " << cmd.B.rs1 << "#" << ret.rs1 << " " << cmd.B.rs2 << "#" << ret.rs2 << " " << ret.new_pc << std::endl;
 
-        
+
         return new_pr.id_ex = ret;
     }
 };
@@ -596,14 +587,17 @@ public:
 
 class Write_Backer {    // excellent name though
 public:
-    void write(const Pipeline_Register &pr, Register &reg) {
+    void write(const Pipeline_Register &pr, Register_Tmp &new_reg) {
         if(pr.mem_wb.inst.cmd.data == 0u) return;
         // debug << "WBing..." << std::endl;
 
 
         uint rd = pr.mem_wb.inst.cmd.R.rd;
         if(pr.mem_wb.inst.rough != B_func && pr.mem_wb.inst.rough != STORE_func) {
-            if(rd) reg[rd] = pr.mem_wb.data; // discard modification on x0
+            if(rd) {
+                new_reg.rd = rd;
+                new_reg.new_value = pr.mem_wb.data; // discard modification on x0
+            }
             // debug << rd << "#" << reg[rd] << std::endl;
         }
         // debug << "new_pc: " << reg.pc << std::endl << std::endl;
