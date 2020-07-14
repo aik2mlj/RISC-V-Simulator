@@ -112,7 +112,8 @@ enum ROUGH_FUNCs { // roughly classify the instruction type
     R_I_func,
     R_R_func,
     STALLED_func,
-    STALLED2_func
+    STALLED2_func,
+    VOID_func
 };
 const char ROUGH_NAMEs[][11] = {
     "LUI", "AUIPC", "JAL", "JALR",
@@ -148,16 +149,14 @@ public:
     uint new_pc;
 
     Instruction(): cmd(0u) {
+        rough = VOID_func; fine = 0;
         cond = 0;
         imm = rs1 = rs2 = 0;
         branch_return = 0;
         new_pc = 0;
     }
-    Instruction(const IF_ID &_if_id) {
+    Instruction(const IF_ID &_if_id): Instruction() {
         cmd = _if_id.cmd;
-        cond = 0;
-        imm = rs1 = rs2 = 0;
-        branch_return = 0;
         new_pc = _if_id.new_pc;
     }
 };
@@ -169,7 +168,7 @@ public:
     Instruction inst;
     uint addr;
     int ans;
-    EX_MEM() = default;
+    EX_MEM(): inst() { addr = 0; ans = 0; }
     EX_MEM(const Instruction &_inst): inst(_inst) { addr = 0; ans = 0; }
 };
 
@@ -177,7 +176,7 @@ class MEM_WB { // connect MEM & WB
 public:
     Instruction inst;
     int data;
-    MEM_WB() = default;
+    MEM_WB(): inst() { data = 0; }
     MEM_WB(const Instruction &_inst): inst(_inst) { data = 0; }
 };
 

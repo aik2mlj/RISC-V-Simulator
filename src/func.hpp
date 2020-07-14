@@ -17,17 +17,26 @@ public:
 
 class Instruction_Fetcher {
 public:
-    IF_ID fetch(const Pipeline_Register &pr, const Register &reg, Register &new_reg, const Memory &mem) {
+    IF_ID fetch(const Pipeline_Register &new_pr, const Register &reg, Register &new_reg, const Memory &mem) {
 
         // debug << "Fetching..." << std::endl;
-        // debug << "pc: " << std::hex << reg.pc << '\t';
         IF_ID ret;
         ret.new_pc = reg.pc; // FIXME:
-        ret.cmd.in.o1 = mem[ret.new_pc++];
-        ret.cmd.in.o2 = mem[ret.new_pc++];
-        ret.cmd.in.o3 = mem[ret.new_pc++];
-        ret.cmd.in.o4 = mem[ret.new_pc++];
+        ret.cmd.in.o1 = (uint)mem[ret.new_pc++];
+        ret.cmd.in.o2 = (uint)mem[ret.new_pc++];
+        ret.cmd.in.o3 = (uint)mem[ret.new_pc++];
+        ret.cmd.in.o4 = (uint)mem[ret.new_pc++];
         new_reg.pc = ret.new_pc;
+        switch(new_pr.id_ex.rough) {
+        case AUIPC:
+        case JAL:
+        case JALR:
+            return ret;
+        case B_func:
+            if(new_pr.id_ex.cond) return ret;
+        default: break;
+        }
+        // debug << "pc: " << std::hex << reg.pc << '\t';
         // debug << std::setw(8) << std::setfill('0') << std::hex << ret.cmd.data << std::endl;
 
         return ret;
@@ -126,7 +135,7 @@ public:
             case STORE_func: // STORE
             case R_R_func: // R_R // rs1 & rs2
                 if(cmd.R.rs1 == pr.id_ex.cmd.I.rd || cmd.R.rs2 == pr.id_ex.cmd.I.rd) {
-                    // debug << "RAW hazard detected!" << std::endl;
+                    // debug << "RAW hazard2 detected!" << std::endl;
                     new_pr.id_ex.rough = STALLED_func;
                     throw stall_throw(2);
                 }
@@ -164,27 +173,29 @@ public:
                     break;
                 default: break;
                 }
-            default: // FIXME:
-                if(pr.id_ex.rough != STALLED2_func && pr.ex_mem.inst.rough == LOAD_func) // the previous_previous inst is LOAD & STALLed less than twice
-                    switch(ret.rough) {
-                    case JALR:
-                        if(cmd.R.rs1 == pr.id_ex.cmd.I.rd) {
-                            // debug << "data hazard caused by JALR!" << std::endl;
-                            new_pr.id_ex.rough = STALLED2_func; // FIXME:
-                            throw stall_throw(2);
-                        }
-                        break;
-                    case B_func:
-                        if(cmd.R.rs1 == pr.id_ex.cmd.I.rd || cmd.R.rs2 == pr.id_ex.cmd.I.rd) {
-                            // debug << "data hazard caused by B_func!" << std::endl;
-                            new_pr.id_ex.rough = STALLED2_func;
-                            throw stall_throw(2);
-                        }
-                        break;
-                    default: break;
-                    }
-                break;
+            default: break;
             }
+        }
+
+        if(pr.ex_mem.inst.cmd.I.rd) {
+            if(pr.id_ex.rough != STALLED2_func && pr.ex_mem.inst.rough == LOAD_func) // the previous_previous inst is LOAD & STALLed less than twice
+                switch(ret.rough) {
+                case JALR:
+                    if(cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd) {
+                        // debug << "data hazard caused by JALR!" << std::endl;
+                        new_pr.id_ex.rough = STALLED2_func; // FIXME:
+                        throw stall_throw(2);
+                    }
+                    break;
+                case B_func:
+                    if(cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd || cmd.R.rs2 == pr.ex_mem.inst.cmd.I.rd) {
+                        // debug << "data hazard caused by B_func!" << std::endl;
+                        new_pr.id_ex.rough = STALLED2_func;
+                        throw stall_throw(2);
+                    }
+                    break;
+                default: break;
+                }
         }
 
         ret.fine = cmd.B.funct3;
@@ -324,7 +335,7 @@ public:
         }
         ret.new_pc = new_reg.pc; // used for branch hazard
 
-        // debug << ROUGH_NAMEs[ret.rough] << " " << ret.fine << " " << std::hex << ret.imm << " " << cmd.B.rs1 << "#" << ret.rs1 << " " << cmd.B.rs2 << "#" << ret.rs2 << " " << ret.new_pc << std::endl;
+        // debug << ROUGH_NAMEs[ret.rough] << " " << ret.fine << " " << std::hex << " " << cmd.B.rs1 << "#" << ret.rs1 << " " << cmd.B.rs2 << "#" << ret.rs2 << " " << ret.new_pc << std::endl;
 
         
         return new_pr.id_ex = ret;

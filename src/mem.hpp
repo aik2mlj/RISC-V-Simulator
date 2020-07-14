@@ -24,7 +24,8 @@ class Memory {
 
 public:
     Memory() {
-        data = new unsigned char[MAX_MEM]; memset(data, 0, sizeof(data));
+        data = new unsigned char[MAX_MEM];
+        for(int i = 0; i < MAX_MEM; ++i) data[i] = 0u;
     }
     ~Memory() { delete [] data; }
     unsigned char &operator[](const uint &p) { return data[p]; }

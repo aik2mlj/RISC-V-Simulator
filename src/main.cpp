@@ -32,15 +32,15 @@ int main() {
     _mem_.init(cin);
     while(true) {
         // debug << PR.clock << " ------------" << endl;
-        ++PR.clock;
+        ++PR_tmp.clock;
 
         try {
             WB.write(PR, reg_tmp);
             PR_tmp.mem_wb = MEM.access(PR, PR_tmp, _mem_);
             PR_tmp.ex_mem = EX.exec(PR, PR_tmp);
             ID.decode(PR, PR_tmp, _reg_, reg_tmp);
-            if(!PR.end_flag) PR_tmp.if_id = IF.fetch(PR, _reg_, reg_tmp, _mem_);
-        } catch(stall_throw &_throw) {
+            if(!PR.end_flag) PR_tmp.if_id = IF.fetch(PR_tmp, _reg_, reg_tmp, _mem_);
+        } catch(const stall_throw &_throw) {
             PR_tmp.stalled = _throw.stall_num;
         }
 
