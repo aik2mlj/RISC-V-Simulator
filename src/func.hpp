@@ -7,6 +7,7 @@
 #include <bitset>
 #include "type.hpp"
 #include "mem.hpp"
+#include "pred.hpp"
 #define debug std::cout
 
 class stall_throw {
@@ -17,7 +18,7 @@ public:
 
 class Instruction_Fetcher {
 public:
-    IF_ID fetch(const Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, const Memory &mem) {
+    IF_ID fetch(const Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, const Memory &mem, const Predictor &pred) {
 
         // debug << "Fetching..." << std::endl;
         IF_ID ret;
@@ -26,7 +27,13 @@ public:
         ret.cmd.in.o2 = (uint)mem[ret.new_pc++];
         ret.cmd.in.o3 = (uint)mem[ret.new_pc++];
         ret.cmd.in.o4 = (uint)mem[ret.new_pc++];
-        new_reg.pc = ret.new_pc;
+
+        // Prediction:
+        uint jp = 0;
+        if(pred.predict(reg.pc, jp)) {
+            new_reg.pc = jp; // the next IF is the branched one
+        } else
+            new_reg.pc = ret.new_pc;
         // switch(new_pr.id_ex.rough) {
         // case AUIPC:
         // case JAL:
@@ -37,7 +44,7 @@ public:
         // default: break;
         // }
         // debug << "pc: " << std::hex << reg.pc << '\t';
-        // debug << std::setw(8) << std::setfill('0') << std::hex << ret.cmd.data << std::endl;
+        // debug << std::setw(8) << std::setfill('0') << std::hex << ret.cmd.data << "\t" << new_reg.pc << std::endl;
 
         return ret;
     }
@@ -47,7 +54,7 @@ class Instruction_Decorder {
     static const int OPCODE[9];
 
 public:
-    Instruction decode(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg) {
+    Instruction decode(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, Predictor &pred) {
         if(pr.if_id.cmd.data == 0u) return new_pr.id_ex = Instruction(CMD(0u));
         if(pr.stalled == 1) { // stalled IF, in the next round don't do ID
             new_pr.stalled = 0;
@@ -57,24 +64,24 @@ public:
         // debug << "Decoding..." << std::endl;
 
         // #branch hazard FIXME:
-        switch(pr.id_ex.rough) {
-        case AUIPC:
-        case JAL:
-        case JALR:
-            // debug << "here!" << std::endl;
-            new_reg.pc = pr.id_ex.new_pc; // pc = jump_pc rather than former_pc + 4
-            new_pr.id_ex = NOP;
-            throw stall_throw(1);
-            break;
-        case B_func:
-            if(pr.id_ex.cond) {
-                new_reg.pc = pr.id_ex.new_pc;
-                new_pr.id_ex = NOP;
-                throw stall_throw(1);
-            }
-            break;
-        default: break;
-        }
+        // switch(pr.id_ex.rough) {
+        // case AUIPC:
+        // case JAL:
+        // case JALR:
+        //     // debug << "here!" << std::endl;
+        //     new_reg.pc = pr.id_ex.new_pc; // pc = jump_pc rather than former_pc + 4
+        //     new_pr.id_ex = NOP;
+        //     throw stall_throw(1);
+        //     break;
+        // // case B_func:
+        // //     if(pr.id_ex.cond) {
+        // //         new_reg.pc = pr.id_ex.new_pc;
+        // //         new_pr.id_ex = NOP;
+        // //         throw stall_throw(1);
+        // //     }
+        // //     break;
+        // default: break;
+        // }
 
         // ##END
         if(pr.if_id.cmd.data == END_CMD) {
@@ -201,7 +208,6 @@ public:
         ret.fine = cmd.B.funct3;
         ret.rs1 = reg[cmd.B.rs1];
         ret.rs2 = reg[cmd.B.rs2];
-        new_reg.pc = ret.new_pc;
 
         // ID Forwarding (get renewed data in MEM_WB)
         // debug << "@ " << pr.mem_wb.inst.rough << " " << ret.rough << " " << ret.cmd.R.rs1 << " " << pr.mem_wb.inst.cmd.I.rd << std::endl;
@@ -269,43 +275,43 @@ public:
             break;
         case 0b0010111:
             ret.imm = cmd.U.getImm();
-            new_reg.pc += ret.imm - 4;
+            ret.new_pc += ret.imm - 4;
             ret.cond = 1;
-            ret.branch_return = new_reg.pc; // adds this offset to the pc, then places the result in register rd.
+            ret.branch_return = ret.new_pc; // adds this offset to the pc, then places the result in register rd.
             break;
         case 0b1101111:
             ret.imm = cmd.J.getImm();
             ret.branch_return = reg.pc;
-            new_reg.pc += ret.imm - 4;
+            ret.new_pc += ret.imm - 4;
             // debug << "ra: " << ret.ans << std::endl;
             ret.cond = 1;
             break;
         case 0b1100111:
             ret.imm = cmd.I.getImm();
             ret.branch_return = reg.pc;
-            new_reg.pc = ((ret.imm + ret.rs1) >> 1) << 1; // set the least bit to 0
+            ret.new_pc = ((ret.imm + ret.rs1) >> 1) << 1; // set the least bit to 0
             ret.cond = 1;
             break;
         case 0b1100011: // finish the branch inst at this stage
             ret.imm = cmd.B.getImm();
             switch((B_FUNCs)ret.fine) {
             case BEQ:
-                if(ret.rs1 == ret.rs2) new_reg.pc += ret.imm - 4, ret.cond = 1;
+                if(ret.rs1 == ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
                 break;
             case BNE:
-                if(ret.rs1 != ret.rs2) new_reg.pc += ret.imm - 4, ret.cond = 1;
+                if(ret.rs1 != ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
                 break;
             case BLT:
-                if(ret.rs1 < ret.rs2) new_reg.pc += ret.imm - 4, ret.cond = 1;
+                if(ret.rs1 < ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
                 break;
             case BGE:
-                if(ret.rs1 >= ret.rs2) new_reg.pc += ret.imm - 4, ret.cond = 1;
+                if(ret.rs1 >= ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
                 break;
             case BLTU:
-                if((uint)ret.rs1 < (uint)ret.rs2) new_reg.pc += ret.imm - 4, ret.cond = 1;
+                if((uint)ret.rs1 < (uint)ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
                 break;
             case BGEU:
-                if((uint)ret.rs1 >= (uint)ret.rs2) new_reg.pc += ret.imm - 4, ret.cond = 1;
+                if((uint)ret.rs1 >= (uint)ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
                 break;
             }
             break;
@@ -324,7 +330,23 @@ public:
             // debug << std::bitset<7>(cmd.B.opcode) << std::endl;
             assert(0); break;
         }
-        ret.new_pc = new_reg.pc; // used for branch hazard
+
+        // Prediction feedback
+        if(ret.rough == B_func) {
+            if(ret.new_pc != pr.if_id.new_pc) {
+                pred.feedback(pr.if_id.new_pc - 4, ret.new_pc, true); // the branch is taken!
+            } else {
+                pred.feedback(pr.if_id.new_pc - 4, ret.new_pc, false); // not taken
+            }
+            // pred.feedback_rate(ret.new_pc == new_reg.pc);
+        }
+        if(ret.new_pc != new_reg.pc) { // the prediction is NOT correct | AUIPC/JAL/JALR
+            new_reg.pc = ret.new_pc;
+            new_pr.id_ex = ret;
+            throw stall_throw(1); // re-IF
+        }
+
+        new_reg.pc = ret.new_pc; // used for branch hazard
 
         // debug << ROUGH_NAMEs[ret.rough] << " " << ret.fine << " " << std::hex << " " << cmd.B.rs1 << "#" << ret.rs1 << " " << cmd.B.rs2 << "#" << ret.rs2 << " " << ret.new_pc << std::endl;
 
