@@ -37,10 +37,10 @@ int main() {
 
         try {
             WB.write(PR, reg_tmp);
-            PR_tmp.mem_wb = MEM.access(PR, PR_tmp, _mem_);
-            PR_tmp.ex_mem = EX.exec(PR, PR_tmp);
+            MEM.access(PR, PR_tmp, _mem_);
+            EX.exec(PR, PR_tmp);
             ID.decode(PR, PR_tmp, _reg_, reg_tmp, PRED);
-            if(!PR.end_flag) PR_tmp.if_id = IF.fetch(PR_tmp, _reg_, reg_tmp, _mem_, PRED);
+            if(!PR.end_flag) IF.fetch(PR_tmp, _reg_, reg_tmp, _mem_, PRED);
         } catch(const stall_throw &_throw) {
             PR_tmp.stalled = _throw.stall_num;
         }

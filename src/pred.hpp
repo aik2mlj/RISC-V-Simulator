@@ -19,16 +19,16 @@ class Predictor {
     uint success_num = 0;
 public:
     Predictor() { memset(jump_pc, 0, sizeof(jump_pc)); }
-    void feedback(uint pc, uint jp, bool taken) {
+    void feedback(const uint &pc, const uint &jp, const bool &taken) {
         uint hash_pc = pc & (M - 1); // get the lower 14bit for hash
-        jump_pc[hash_pc] = jp;      // store the jump_pc
+        if(!jump_pc[hash_pc]) jump_pc[hash_pc] = jp;      // store the jump_pc
         if(taken) {
-            if(tb[hash_pc].data < 3) tb[hash_pc].data += 1;
+            if(tb[hash_pc].data < 3) ++tb[hash_pc].data;
         } else {
-            if(tb[hash_pc].data > 0) tb[hash_pc].data -= 1;
+            if(tb[hash_pc].data > 0) --tb[hash_pc].data;
         }
     }
-    bool predict(uint pc, uint &jp) const {
+    bool predict(const uint &pc, uint &jp) const {
         uint hash_pc = pc & (M - 1);
         jp = jump_pc[hash_pc];
         if(!jump_pc[hash_pc]) {
@@ -37,7 +37,7 @@ public:
         if(tb[hash_pc].o2) return true;
         else return false;
     }
-    void feedback_rate(bool correct) {
+    void feedback_rate(const bool &correct) {
         ++total_num;
         if(correct) ++success_num;
     }

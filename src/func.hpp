@@ -18,7 +18,7 @@ public:
 
 class Instruction_Fetcher {
 public:
-    IF_ID fetch(const Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, const Memory &mem, const Predictor &pred) {
+    void fetch(Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, const Memory &mem, const Predictor &pred) {
 
         // debug << "Fetching..." << std::endl;
         IF_ID ret;
@@ -46,7 +46,7 @@ public:
         // debug << "pc: " << std::hex << reg.pc << '\t';
         // debug << std::setw(8) << std::setfill('0') << std::hex << ret.cmd.data << "\t" << new_reg.pc << std::endl;
 
-        return ret;
+        new_pr.if_id = ret;
     }
 };
 
@@ -54,11 +54,11 @@ class Instruction_Decorder {
     static const int OPCODE[9];
 
 public:
-    Instruction decode(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, Predictor &pred) {
-        if(pr.if_id.cmd.data == 0u) return new_pr.id_ex = Instruction(CMD(0u));
+    void decode(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, Predictor &pred) {
+        if(pr.if_id.cmd.data == 0u) { new_pr.id_ex = Instruction(CMD(0u)); return; }
         if(pr.stalled == 1) { // stalled IF, in the next round don't do ID
             new_pr.stalled = 0;
-            return pr.id_ex;
+            return;
         }
 
         // debug << "Decoding..." << std::endl;
@@ -87,7 +87,8 @@ public:
         if(pr.if_id.cmd.data == END_CMD) {
             // debug << "END_CMD!" << std::endl;
             new_pr.end_flag = 1;
-            return new_pr.id_ex = Instruction(CMD(0u)); // 0 inst: no inst
+            new_pr.id_ex = Instruction(CMD(0u)); // 0 inst: no inst
+            return;
         }
 
         // get ROUGH
@@ -351,7 +352,7 @@ public:
         // debug << ROUGH_NAMEs[ret.rough] << " " << ret.fine << " " << std::hex << " " << cmd.B.rs1 << "#" << ret.rs1 << " " << cmd.B.rs2 << "#" << ret.rs2 << " " << ret.new_pc << std::endl;
 
 
-        return new_pr.id_ex = ret;
+        new_pr.id_ex = ret;
     }
 };
 const int Instruction_Decorder::OPCODE[] = {
@@ -365,11 +366,11 @@ const int Instruction_Decorder::OPCODE[] = {
 
 class Executor {
 public:
-    EX_MEM exec(const Pipeline_Register &pr, Pipeline_Register &new_pr) {
-        if(pr.id_ex.cmd.data == 0u) return EX_MEM();
+    void exec(const Pipeline_Register &pr, Pipeline_Register &new_pr) {
+        if(pr.id_ex.cmd.data == 0u) { new_pr.ex_mem = EX_MEM(); return; }
         if(pr.stalled == 2) {
             new_pr.stalled = 0;
-            return pr.ex_mem;
+            return;
         }
 
 
@@ -530,17 +531,17 @@ public:
             break;
         }
         // debug << "EX_ans: " << ret.ans << std::endl;
-        return ret;
+        new_pr.ex_mem = ret;
     }
 };
 
 class Memory_Accesser {
 public:
-    MEM_WB access(const Pipeline_Register &pr, Pipeline_Register &new_pr, Memory &mem) {
-        if(pr.ex_mem.inst.cmd.data == 0u) return MEM_WB();
+    void access(const Pipeline_Register &pr, Pipeline_Register &new_pr, Memory &mem) {
+        if(pr.ex_mem.inst.cmd.data == 0u) { new_pr.mem_wb = MEM_WB(); return; }
         if(pr.stalled == 3) {
             new_pr.stalled = 0;
-            return pr.mem_wb;
+            return;
         }
         // debug << "MEMing...";
 
@@ -603,7 +604,7 @@ public:
 
         default: break;
         }
-        return ret;
+        new_pr.mem_wb = ret;
     }
 };
 
