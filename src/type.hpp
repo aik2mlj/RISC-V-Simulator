@@ -133,8 +133,9 @@ class IF_ID {
 public:
     CMD cmd;
     uint new_pc;
-    IF_ID() { cmd.data = 0u; new_pc = 0;}
-    IF_ID(const CMD &_) { cmd = _; new_pc = 0; }
+    uint predicted_pc;
+    IF_ID() { cmd.data = 0u; predicted_pc = new_pc = 0;}
+    IF_ID(const CMD &_): IF_ID() { cmd = _; }
 };
 
 class Instruction {
@@ -144,20 +145,22 @@ public:
     uint fine;         // fine type in accord with XX_FUNCs
     int imm;           // immediate number
     int rs1, rs2;      // store the VALUE of rs1, rs2
-    bool cond;         // whether the branch is taken
+    // bool cond;         // whether the branch is taken
     int branch_return;
+    uint predicted_pc;
     uint new_pc;
 
     Instruction(): cmd(0u) {
         rough = VOID_func; fine = 0;
-        cond = 0;
+        // cond = 0;
         imm = rs1 = rs2 = 0;
         branch_return = 0;
-        new_pc = 0;
+        predicted_pc = new_pc = 0;
     }
     Instruction(const IF_ID &_if_id): Instruction() {
         cmd = _if_id.cmd;
         new_pc = _if_id.new_pc;
+        predicted_pc = _if_id.predicted_pc;
     }
 };
 

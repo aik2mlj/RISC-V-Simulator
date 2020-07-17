@@ -31,9 +31,12 @@ public:
         // Prediction:
         uint jp = 0;
         if(pred.predict(reg.pc, jp)) {
+            // debug << "predicted JUMP!" << std::endl;
             new_reg.pc = jp; // the next IF is the branched one
-        } else
+        } else {
             new_reg.pc = ret.new_pc;
+        }
+        ret.predicted_pc = new_reg.pc;
         // switch(new_pr.id_ex.rough) {
         // case AUIPC:
         // case JAL:
@@ -172,13 +175,13 @@ public:
                         throw stall_throw(2);
                     }
                     break;
-                case B_func:
-                    if(cmd.R.rs1 == pr.id_ex.cmd.I.rd || cmd.R.rs2 == pr.id_ex.cmd.I.rd) {
-                        // debug << "data hazard caused by B_func!" << std::endl;
-                        new_pr.id_ex.rough = STALLED_func;
-                        throw stall_throw(2);
-                    }
-                    break;
+                // case B_func:
+                //     if(cmd.R.rs1 == pr.id_ex.cmd.I.rd || cmd.R.rs2 == pr.id_ex.cmd.I.rd) {
+                //         debug << "data hazard caused by B_func!" << std::endl;
+                //         new_pr.id_ex.rough = STALLED_func;
+                //         throw stall_throw(2);
+                //     }
+                //     break;
                 default: break;
                 }
             default: break;
@@ -195,13 +198,13 @@ public:
                         throw stall_throw(2);
                     }
                     break;
-                case B_func:
-                    if(cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd || cmd.R.rs2 == pr.ex_mem.inst.cmd.I.rd) {
-                        // debug << "data hazard caused by B_func!" << std::endl;
-                        new_pr.id_ex.rough = STALLED2_func;
-                        throw stall_throw(2);
-                    }
-                    break;
+                // case B_func:
+                //     if(cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd || cmd.R.rs2 == pr.ex_mem.inst.cmd.I.rd) {
+                //         debug << "data hazard caused by B_func!" << std::endl;
+                //         new_pr.id_ex.rough = STALLED2_func;
+                //         throw stall_throw(2);
+                //     }
+                //     break;
                 default: break;
                 }
         }
@@ -227,13 +230,20 @@ public:
                 case R_I_func: // rs1
                     if(ret.cmd.R.rs1 == pr.mem_wb.inst.cmd.I.rd) {
                         ret.rs1 = pr.mem_wb.data;
+                        // debug << "ID forwarding." << std::endl;
                     }
                     break;
                 case B_func:
                 case STORE_func:
                 case R_R_func: // rs1 & rs2
-                    if(ret.cmd.R.rs1 == pr.mem_wb.inst.cmd.I.rd) ret.rs1 = pr.mem_wb.data;
-                    if(ret.cmd.R.rs2 == pr.mem_wb.inst.cmd.I.rd) ret.rs2 = pr.mem_wb.data;
+                    if(ret.cmd.R.rs1 == pr.mem_wb.inst.cmd.I.rd) {
+                        ret.rs1 = pr.mem_wb.data;
+                        // debug << "ID forwarding." << std::endl;
+                    }
+                    if(ret.cmd.R.rs2 == pr.mem_wb.inst.cmd.I.rd) {
+                        ret.rs2 = pr.mem_wb.data;
+                        // debug << "ID forwarding." << std::endl;
+                    }
                     break;
                 default: break;
                 }
@@ -256,11 +266,11 @@ public:
                         ret.rs1 = pr.ex_mem.ans;
                     }
                     break;
-                case B_func:
-                    if(ret.cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd) ret.rs1 = pr.ex_mem.ans;
-                    if(ret.cmd.R.rs2 == pr.ex_mem.inst.cmd.I.rd) ret.rs2 = pr.ex_mem.ans;
-                    break;
-                default: break;
+                // case B_func:
+                //     if(ret.cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd) ret.rs1 = pr.ex_mem.ans;
+                //     if(ret.cmd.R.rs2 == pr.ex_mem.inst.cmd.I.rd) ret.rs2 = pr.ex_mem.ans;
+                //     break;
+                // default: break;
                 }
                 break;
             default: break;
@@ -270,6 +280,7 @@ public:
 
     // JALR & B_func operations end
 
+        // REAL ID part
         switch(cmd.B.opcode) {
         case 0b0110111:
             ret.imm = cmd.U.getImm();
@@ -277,44 +288,24 @@ public:
         case 0b0010111:
             ret.imm = cmd.U.getImm();
             ret.new_pc += ret.imm - 4;
-            ret.cond = 1;
+            // ret.cond = 1;
             ret.branch_return = ret.new_pc; // adds this offset to the pc, then places the result in register rd.
             break;
         case 0b1101111:
             ret.imm = cmd.J.getImm();
             ret.branch_return = reg.pc;
             ret.new_pc += ret.imm - 4;
-            // debug << "ra: " << ret.ans << std::endl;
-            ret.cond = 1;
+            // debug << "here: " << ret.new_pc << std::endl;
+            // ret.cond = 1;
             break;
         case 0b1100111:
             ret.imm = cmd.I.getImm();
             ret.branch_return = reg.pc;
             ret.new_pc = ((ret.imm + ret.rs1) >> 1) << 1; // set the least bit to 0
-            ret.cond = 1;
+            // ret.cond = 1;
             break;
         case 0b1100011: // finish the branch inst at this stage
             ret.imm = cmd.B.getImm();
-            switch((B_FUNCs)ret.fine) {
-            case BEQ:
-                if(ret.rs1 == ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
-                break;
-            case BNE:
-                if(ret.rs1 != ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
-                break;
-            case BLT:
-                if(ret.rs1 < ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
-                break;
-            case BGE:
-                if(ret.rs1 >= ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
-                break;
-            case BLTU:
-                if((uint)ret.rs1 < (uint)ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
-                break;
-            case BGEU:
-                if((uint)ret.rs1 >= (uint)ret.rs2) ret.new_pc += ret.imm - 4, ret.cond = 1;
-                break;
-            }
             break;
         case 0b0000011:
             ret.imm = cmd.I.getImm();
@@ -332,21 +323,14 @@ public:
             assert(0); break;
         }
 
-        // Prediction feedback
-        if(ret.rough == B_func) {
-            if(ret.new_pc != pr.if_id.new_pc) {
-                pred.feedback(pr.if_id.new_pc - 4, ret.new_pc, true); // the branch is taken!
-            } else {
-                pred.feedback(pr.if_id.new_pc - 4, ret.new_pc, false); // not taken
-            }
-            // pred.feedback_rate(ret.new_pc == new_reg.pc);
-        }
-        if(ret.new_pc != new_reg.pc) { // the prediction is NOT correct | AUIPC/JAL/JALR
+        if((ret.rough == AUIPC || ret.rough == JAL || ret.rough == JALR) && ret.new_pc != new_reg.pc) { // AUIPC/JAL/JALR
+            // debug << "id throw!: " << new_reg.pc << " " << ret.new_pc << std::endl;
             new_reg.pc = ret.new_pc;
             new_pr.id_ex = ret;
             throw stall_throw(1); // re-IF
         }
 
+        // debug << ":" << new_reg.pc << std::endl;
         new_reg.pc = ret.new_pc; // used for branch hazard
 
         // debug << ROUGH_NAMEs[ret.rough] << " " << ret.fine << " " << std::hex << " " << cmd.B.rs1 << "#" << ret.rs1 << " " << cmd.B.rs2 << "#" << ret.rs2 << " " << ret.new_pc << std::endl;
@@ -366,7 +350,7 @@ const int Instruction_Decorder::OPCODE[] = {
 
 class Executor {
 public:
-    void exec(const Pipeline_Register &pr, Pipeline_Register &new_pr) {
+    void exec(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, Predictor &pred) {
         if(pr.id_ex.cmd.data == 0u) { new_pr.ex_mem = EX_MEM(); return; }
         if(pr.stalled == 2) {
             new_pr.stalled = 0;
@@ -456,9 +440,29 @@ public:
         case AUIPC:
         case JAL:
         case JALR:
-        case B_func:
             ret.ans = inst.branch_return; // if it's a branch inst, the return value is the branch_return
             break;
+        case B_func:
+            switch((B_FUNCs)inst.fine) {
+            case BEQ:
+                if(inst.rs1 == inst.rs2) inst.new_pc += inst.imm - 4;
+                break;
+            case BNE:
+                if(inst.rs1 != inst.rs2) inst.new_pc += inst.imm - 4;
+                break;
+            case BLT:
+                if(inst.rs1 < inst.rs2) inst.new_pc += inst.imm - 4;
+                break;
+            case BGE:
+                if(inst.rs1 >= inst.rs2) inst.new_pc += inst.imm - 4;
+                break;
+            case BLTU:
+                if((uint)inst.rs1 < (uint)inst.rs2) inst.new_pc += inst.imm - 4;
+                break;
+            case BGEU:
+                if((uint)inst.rs1 >= (uint)inst.rs2) inst.new_pc += inst.imm - 4;
+                break;
+            }
 
         case LOAD_func:
             ret.addr = inst.imm + inst.rs1; // return the effective address
@@ -532,6 +536,23 @@ public:
         }
         // debug << "EX_ans: " << ret.ans << std::endl;
         new_pr.ex_mem = ret;
+
+        // Prediction feedback
+        if(inst.rough == B_func) {
+            if(inst.new_pc != pr.id_ex.new_pc) {
+                // debug << "taken branch: " << pr.id_ex.new_pc - 4 << " " << inst.new_pc << std::endl;
+                pred.feedback(pr.id_ex.new_pc - 4, inst.new_pc, true); // the branch is taken!
+            } else {
+                pred.feedback(pr.id_ex.new_pc - 4, inst.new_pc, false); // not taken
+            }
+            // pred.feedback_rate(ret.new_pc == new_reg.pc);
+            if(inst.new_pc != inst.predicted_pc) { // the prediction is NOT correct!
+                // debug << "ex throw! " << inst.new_pc << " " << inst.predicted_pc << std::endl;
+                new_pr.id_ex = NOP; // let the next inst be NOP
+                new_reg.pc = inst.new_pc; // renew the pc
+                throw stall_throw(1);
+            }
+        }
     }
 };
 
