@@ -37,7 +37,12 @@ int main() {
         ++PR_tmp.clock;
 
         WB.write(PR, PR_tmp, _reg_, reg_tmp);
-        MEM.access(PR, PR_tmp, _mem_);
+        if(tmp = MEM.access(PR, PR_tmp, _mem_)) {
+            PR_tmp.MEM_stalled = tmp;
+            PR = PR_tmp;
+            _reg_ = reg_tmp;
+            continue;
+        }
         if(tmp = EX.exec(PR, PR_tmp, _reg_, reg_tmp, PRED)) {
             PR_tmp.stalled = tmp;
             PR = PR_tmp;

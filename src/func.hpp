@@ -607,7 +607,10 @@ public:
         CMD tmp;
         switch(ret.inst.rough) {
         case LOAD_func:
-            new_pr.clock += 2; // 3 cycles
+            if(!pr.MEM_stalled) return 2;
+            if(pr.MEM_stalled != 1) return pr.MEM_stalled - 1;
+            else new_pr.MEM_stalled = 0;
+            // new_pr.clock += 2; // 3 cycles
             switch((LOAD_FUNCs)ret.inst.fine) {
             case LB:
                 ret.data = (char)mem[ex_mem.addr];
@@ -637,7 +640,10 @@ public:
             break;
 
         case STORE_func:
-            new_pr.clock += 2; // 3 cycles
+            if(!pr.MEM_stalled) return 2;
+            if(pr.MEM_stalled != 1) return pr.MEM_stalled - 1;
+            else new_pr.MEM_stalled = 0;
+            // new_pr.clock += 2; // 3 cycles
             switch((STORE_FUNCs)ret.inst.fine) {
             case SB:
                 mem[ex_mem.addr] = (uchar)(ret.data & 255u);

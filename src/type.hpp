@@ -192,6 +192,7 @@ public:
 
     uint clock = 0;
     uint stalled = 0;
+    uint MEM_stalled = 0;
     bool end_flag = 0;
 };
 
