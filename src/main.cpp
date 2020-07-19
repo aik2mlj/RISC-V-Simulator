@@ -23,7 +23,7 @@ int main() {
     Write_Backer WB;
 
     Pipeline_Register PR;
-    // Pipeline_Register PR_tmp;
+    Pipeline_Register PR_tmp;
     Predictor PRED;
 
     bool used[4] = {0}; // whether or not an inst is in pipeline
@@ -34,27 +34,29 @@ int main() {
     int tmp;
     while(true) {
         // debug << PR.clock << " ------------" << endl;
-        ++PR.clock;
+        ++PR_tmp.clock;
 
-        WB.write(PR, PR, _reg_, reg_tmp);
-        MEM.access(PR, PR, _mem_);
-        if(tmp = EX.exec(PR, PR, _reg_, reg_tmp, PRED)) {
-            PR.stalled = tmp;
+        WB.write(PR, PR_tmp, _reg_, reg_tmp);
+        MEM.access(PR, PR_tmp, _mem_);
+        if(tmp = EX.exec(PR, PR_tmp, _reg_, reg_tmp, PRED)) {
+            PR_tmp.stalled = tmp;
+            PR = PR_tmp;
             _reg_ = reg_tmp;
             continue;
         }
-        if(tmp = ID.decode(PR, PR, _reg_, reg_tmp, PRED)) {
-            PR.stalled = tmp;
+        if(tmp = ID.decode(PR, PR_tmp, _reg_, reg_tmp, PRED)) {
+            PR_tmp.stalled = tmp;
+            PR = PR_tmp;
             _reg_ = reg_tmp;
             continue;
         }
-        if(!PR.end_flag) IF.fetch(PR, _reg_, reg_tmp, _mem_, PRED);
+        if(!PR.end_flag) IF.fetch(PR_tmp, _reg_, reg_tmp, _mem_, PRED);
 
 
         // cout << "catched: " << _throw.stall_num << endl;
 
         _reg_ = reg_tmp;
-        // PR = PR_tmp;
+        PR = PR_tmp;
         if(PR.end_flag && PR.mem_wb.inst.cmd.data == 0u) break; // have done the last WB: quit
     }
     cout << std::dec << (((uint)_reg_[10]) & 255u) << endl;
