@@ -31,20 +31,29 @@ int main() {
     Register_Tmp reg_tmp; // simulate the "simutaneous" pipeline by modifying reg_tmp in stages rather than write into _reg_ directly
 
     _mem_.init(cin);
+    int tmp;
     while(true) {
         // debug << PR.clock << " ------------" << endl;
         ++PR_tmp.clock;
 
-        try {
-            WB.write(PR, PR_tmp, reg_tmp);
-            MEM.access(PR, PR_tmp, _mem_);
-            EX.exec(PR, PR_tmp, _reg_, reg_tmp, PRED);
-            ID.decode(PR, PR_tmp, _reg_, reg_tmp, PRED);
-            if(!PR.end_flag) IF.fetch(PR_tmp, _reg_, reg_tmp, _mem_, PRED);
-        } catch(const stall_throw &_throw) {
-            PR_tmp.stalled = _throw.stall_num;
-            // cout << "catched: " << _throw.stall_num << endl;
+        WB.write(PR, PR_tmp, _reg_, reg_tmp);
+        MEM.access(PR, PR_tmp, _mem_);
+        if(tmp = EX.exec(PR, PR_tmp, _reg_, reg_tmp, PRED)) {
+            PR_tmp.stalled = tmp;
+            PR = PR_tmp;
+            _reg_ = reg_tmp;
+            continue;
         }
+        if(tmp = ID.decode(PR, PR_tmp, _reg_, reg_tmp, PRED)) {
+            PR_tmp.stalled = tmp;
+            PR = PR_tmp;
+            _reg_ = reg_tmp;
+            continue;
+        }
+        if(!PR.end_flag) IF.fetch(PR_tmp, _reg_, reg_tmp, _mem_, PRED);
+
+
+        // cout << "catched: " << _throw.stall_num << endl;
 
         _reg_ = reg_tmp;
         PR = PR_tmp;

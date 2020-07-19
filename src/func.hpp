@@ -18,7 +18,7 @@ public:
 
 class Instruction_Fetcher {
 public:
-    void fetch(Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, const Memory &mem, const Predictor &pred) {
+    int fetch(Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, const Memory &mem, const Predictor &pred) {
 
         // debug << "Fetching..." << std::endl;
         IF_ID ret;
@@ -50,6 +50,7 @@ public:
         // debug << std::setw(8) << std::setfill('0') << std::hex << ret.cmd.data << "\t" << new_reg.pc << std::endl;
 
         new_pr.if_id = ret;
+        return 0;
     }
 };
 
@@ -57,11 +58,11 @@ class Instruction_Decorder {
     static const int OPCODE[9];
 
 public:
-    void decode(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, Predictor &pred) {
-        if(pr.if_id.cmd.data == 0u) { new_pr.id_ex = Instruction(CMD(0u)); return; }
+    int decode(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, Predictor &pred) {
+        if(pr.if_id.cmd.data == 0u) { new_pr.id_ex = Instruction(CMD(0u)); return 0; }
         if(pr.stalled == 1) { // stalled IF, in the next round don't do ID
             ++new_pr.stalled;
-            return;
+            return 0;
         }
 
         // debug << "Decoding..." << std::endl;
@@ -91,7 +92,7 @@ public:
             // debug << "END_CMD!" << std::endl;
             new_pr.end_flag = 1;
             new_pr.id_ex = Instruction(CMD(0u)); // 0 inst: no inst
-            return;
+            return 0;
         }
 
         // get ROUGH
@@ -187,7 +188,7 @@ public:
                 if(cmd.R.rs1 == pr.id_ex.cmd.I.rd) {
                     // debug << "RAW hazard detected!" << std::endl;
                     new_pr.id_ex.rough = STALLED_func; // FIXME:
-                    throw stall_throw(2);
+                    return 2;
                 }
                 break;
             case B_func: // B
@@ -196,7 +197,7 @@ public:
                 if(cmd.R.rs1 == pr.id_ex.cmd.I.rd || cmd.R.rs2 == pr.id_ex.cmd.I.rd) {
                     // debug << "RAW hazard2 detected!" << std::endl;
                     new_pr.id_ex.rough = STALLED_func;
-                    throw stall_throw(2);
+                    return 2;
                 }
                 break;
             default:
@@ -332,14 +333,14 @@ public:
         if((ret.rough == AUIPC || ret.rough == JAL) && ret.new_pc != new_reg.pc) { // AUIPC/JAL
             // debug << "id throw!: " << new_reg.pc << " " << ret.new_pc << std::endl;
             new_reg.pc = ret.new_pc;
-            throw stall_throw(1); // re-IF
+            return 1; // re-IF
         }
         new_reg.pc = ret.new_pc; // used for branch hazard
 
         // debug << ":" << new_reg.pc << std::endl;
 
         // debug << ROUGH_NAMEs[ret.rough] << " " << ret.fine << " " << std::hex << " " << cmd.B.rs1 << "#" << ret.rs1 << " " << cmd.B.rs2 << "#" << ret.rs2 << " " << ret.new_pc << std::endl;
-
+        return 0;
 
     }
 };
@@ -354,11 +355,11 @@ const int Instruction_Decorder::OPCODE[] = {
 
 class Executor {
 public:
-    void exec(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, Predictor &pred) {
-        if(pr.id_ex.cmd.data == 0u) { new_pr.ex_mem = EX_MEM(); return; }
+    int exec(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, Predictor &pred) {
+        if(pr.id_ex.cmd.data == 0u) { new_pr.ex_mem = EX_MEM(); return 0; }
         if(pr.stalled == 2) {
             ++new_pr.stalled;
-            return;
+            return 0;
         }
 
 
@@ -446,11 +447,12 @@ public:
             ret.ans = inst.branch_return; // if it's a branch inst, the return value is the branch_return
             break;
         case JALR:
+            // debug << "JALR throw!" << std::endl;
             ret.ans = inst.new_pc; // original pc + 4
             new_reg.pc = inst.new_pc = ((inst.imm + inst.rs1) >> 1) << 1; // set the least bit to 0
             new_pr.ex_mem = ret;
             new_pr.id_ex = NOP;
-            throw stall_throw(1); // re-IF
+            return 1; // re-IF
             break;
         case B_func:
             switch((B_FUNCs)inst.fine) {
@@ -557,22 +559,23 @@ public:
             }
             // pred.feedback_rate(inst.new_pc == inst.predicted_pc);
             if(inst.new_pc != inst.predicted_pc) { // the prediction is NOT correct!
-                // debug << "ex throw! " << inst.new_pc << " " << inst.predicted_pc << std::endl;
+                // debug << "branch throw! " << inst.new_pc << " " << inst.predicted_pc << std::endl;
                 new_pr.id_ex = NOP; // let the next inst be NOP
                 new_reg.pc = inst.new_pc; // renew the pc
-                throw stall_throw(1);
+                return 1;
             }
         }
+        return 0;
     }
 };
 
 class Memory_Accesser {
 public:
-    void access(const Pipeline_Register &pr, Pipeline_Register &new_pr, Memory &mem) {
-        if(pr.ex_mem.inst.cmd.data == 0u) { new_pr.mem_wb = MEM_WB(); return; }
+    int access(const Pipeline_Register &pr, Pipeline_Register &new_pr, Memory &mem) {
+        if(pr.ex_mem.inst.cmd.data == 0u) { new_pr.mem_wb = MEM_WB(); return 0; }
         if(pr.stalled == 3) {
             ++new_pr.stalled;
-            return;
+            return 0;
         }
         // debug << "MEMing...";
 
@@ -636,16 +639,17 @@ public:
         default: break;
         }
         new_pr.mem_wb = ret;
+        return 0;
     }
 };
 
 class Write_Backer {    // excellent name though
 public:
-    void write(const Pipeline_Register &pr, Pipeline_Register &new_pr, Register_Tmp &new_reg) {
-        if(pr.mem_wb.inst.cmd.data == 0u) return;
+    int write(const Pipeline_Register &pr, Pipeline_Register &new_pr, Register &reg, Register_Tmp &new_reg) {
+        if(pr.mem_wb.inst.cmd.data == 0u) return 0;
         if(pr.stalled == 4) {
             new_pr.stalled = 0;
-            return;
+            return 0;
         }
         // debug << "WBing..." << std::endl;
 
@@ -660,6 +664,7 @@ public:
         }
         // debug << "new_pc: " << reg.pc << std::endl << std::endl;
         // debug << std::endl;
+        return 0;
     }
 };
 
