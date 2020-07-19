@@ -36,7 +36,7 @@ int main() {
         ++PR_tmp.clock;
 
         try {
-            WB.write(PR, reg_tmp);
+            WB.write(PR, PR_tmp, reg_tmp);
             MEM.access(PR, PR_tmp, _mem_);
             EX.exec(PR, PR_tmp, _reg_, reg_tmp, PRED);
             ID.decode(PR, PR_tmp, _reg_, reg_tmp, PRED);

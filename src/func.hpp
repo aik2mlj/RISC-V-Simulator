@@ -60,7 +60,7 @@ public:
     void decode(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, Predictor &pred) {
         if(pr.if_id.cmd.data == 0u) { new_pr.id_ex = Instruction(CMD(0u)); return; }
         if(pr.stalled == 1) { // stalled IF, in the next round don't do ID
-            new_pr.stalled = 0;
+            ++new_pr.stalled;
             return;
         }
 
@@ -97,33 +97,81 @@ public:
         // get ROUGH
         auto cmd = pr.if_id.cmd;
         Instruction ret(pr.if_id);
+        // switch(cmd.B.opcode) {
+        // case 0b0110111:
+        //     ret.rough = LUI;
+        //     break;
+        // case 0b0010111:
+        //     ret.rough = AUIPC;
+        //     break;
+        // case 0b1101111:
+        //     ret.rough = JAL;
+        //     break;
+        // case 0b1100111:
+        //     ret.rough = JALR;
+        //     break;
+        // case 0b1100011: // finish the branch inst at this stage
+        //     ret.rough = B_func;
+        //     break;
+        // case 0b0000011:
+        //     ret.rough = LOAD_func;
+        //     break;
+        // case 0b0100011:
+        //     ret.rough = STORE_func;
+        //     break;
+        // case 0b0010011:
+        //     ret.rough = R_I_func;
+        //     break;
+        // case 0b0110011:
+        //     ret.rough = R_R_func; // no Imm
+        //     break;
+        // default:
+        //     // debug << std::bitset<7>(cmd.B.opcode) << std::endl;
+        //     assert(0); break;
+        // }
         switch(cmd.B.opcode) {
         case 0b0110111:
             ret.rough = LUI;
+            ret.imm = cmd.U.getImm();
             break;
         case 0b0010111:
             ret.rough = AUIPC;
+            ret.imm = cmd.U.getImm();
+            ret.new_pc += ret.imm - 4;
+            // ret.cond = 1;
+            ret.branch_return = ret.new_pc; // adds this offset to the pc, then places the result in register rd.
             break;
         case 0b1101111:
             ret.rough = JAL;
+            ret.imm = cmd.J.getImm();
+            ret.branch_return = reg.pc;
+            ret.new_pc += ret.imm - 4;
+            // debug << "here: " << ret.new_pc << std::endl;
+            // ret.cond = 1;
             break;
         case 0b1100111:
             ret.rough = JALR;
+            ret.imm = cmd.I.getImm();
+            // ret.cond = 1;
             break;
-        case 0b1100011: // finish the branch inst at this stage
+        case 0b1100011:
             ret.rough = B_func;
+            ret.imm = cmd.B.getImm();
             break;
         case 0b0000011:
             ret.rough = LOAD_func;
+            ret.imm = cmd.I.getImm();
             break;
         case 0b0100011:
             ret.rough = STORE_func;
+            ret.imm = cmd.S.getImm();
             break;
         case 0b0010011:
             ret.rough = R_I_func;
+            ret.imm = cmd.I.getImm();
             break;
         case 0b0110011:
-            ret.rough = R_R_func; // no Imm
+            ret.rough = R_R_func;
             break;
         default:
             // debug << std::bitset<7>(cmd.B.opcode) << std::endl;
@@ -159,55 +207,55 @@ public:
 
     // JALR & B_func special operations:
 
-        if(pr.id_ex.cmd.I.rd) {
-            switch(pr.id_ex.rough) {
-            case LUI:
-            case AUIPC:
-            case JAL:
-            case JALR:
-            case R_I_func:
-            case R_R_func:
-                switch(ret.rough) {     // stall for rd funcs because of calculating JALR & B_func in ID
-                case JALR:
-                    if(cmd.R.rs1 == pr.id_ex.cmd.I.rd) {
-                        // debug << "data hazard caused by JALR!" << std::endl;
-                        new_pr.id_ex.rough = STALLED_func; // FIXME:
-                        throw stall_throw(2);
-                    }
-                    break;
-                // case B_func:
-                //     if(cmd.R.rs1 == pr.id_ex.cmd.I.rd || cmd.R.rs2 == pr.id_ex.cmd.I.rd) {
-                //         debug << "data hazard caused by B_func!" << std::endl;
-                //         new_pr.id_ex.rough = STALLED_func;
-                //         throw stall_throw(2);
-                //     }
-                //     break;
-                default: break;
-                }
-            default: break;
-            }
-        }
+        // if(pr.id_ex.cmd.I.rd) {
+        //     switch(pr.id_ex.rough) {
+        //     case LUI:
+        //     case AUIPC:
+        //     case JAL:
+        //     case JALR:
+        //     case R_I_func:
+        //     case R_R_func:
+        //         switch(ret.rough) {     // stall for rd funcs because of calculating JALR & B_func in ID
+        //         case JALR:
+        //             if(cmd.R.rs1 == pr.id_ex.cmd.I.rd) {
+        //                 // debug << "data hazard caused by JALR!" << std::endl;
+        //                 new_pr.id_ex.rough = STALLED_func; // FIXME:
+        //                 throw stall_throw(2);
+        //             }
+        //             break;
+        //         // case B_func:
+        //         //     if(cmd.R.rs1 == pr.id_ex.cmd.I.rd || cmd.R.rs2 == pr.id_ex.cmd.I.rd) {
+        //         //         debug << "data hazard caused by B_func!" << std::endl;
+        //         //         new_pr.id_ex.rough = STALLED_func;
+        //         //         throw stall_throw(2);
+        //         //     }
+        //         //     break;
+        //         default: break;
+        //         }
+        //     default: break;
+        //     }
+        // }
 
-        if(pr.ex_mem.inst.cmd.I.rd) {
-            if(pr.id_ex.rough != STALLED2_func && pr.ex_mem.inst.rough == LOAD_func) // the previous_previous inst is LOAD & STALLed less than twice
-                switch(ret.rough) {
-                case JALR:
-                    if(cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd) {
-                        // debug << "data hazard caused by JALR!" << std::endl;
-                        new_pr.id_ex.rough = STALLED2_func; // FIXME:
-                        throw stall_throw(2);
-                    }
-                    break;
-                // case B_func:
-                //     if(cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd || cmd.R.rs2 == pr.ex_mem.inst.cmd.I.rd) {
-                //         debug << "data hazard caused by B_func!" << std::endl;
-                //         new_pr.id_ex.rough = STALLED2_func;
-                //         throw stall_throw(2);
-                //     }
-                //     break;
-                default: break;
-                }
-        }
+        // if(pr.ex_mem.inst.cmd.I.rd) {
+        //     if(pr.id_ex.rough != STALLED2_func && pr.ex_mem.inst.rough == LOAD_func) // the previous_previous inst is LOAD & STALLed less than twice
+        //         switch(ret.rough) {
+        //         case JALR:
+        //             if(cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd) {
+        //                 // debug << "data hazard caused by JALR!" << std::endl;
+        //                 new_pr.id_ex.rough = STALLED2_func; // FIXME:
+        //                 throw stall_throw(2);
+        //             }
+        //             break;
+        //         // case B_func:
+        //         //     if(cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd || cmd.R.rs2 == pr.ex_mem.inst.cmd.I.rd) {
+        //         //         debug << "data hazard caused by B_func!" << std::endl;
+        //         //         new_pr.id_ex.rough = STALLED2_func;
+        //         //         throw stall_throw(2);
+        //         //     }
+        //         //     break;
+        //         default: break;
+        //         }
+        // }
 
         ret.fine = cmd.B.funct3;
         ret.rs1 = reg[cmd.B.rs1];
@@ -252,91 +300,47 @@ public:
             }
         }
         // Forwarding for JALR & B_func
-        if(pr.ex_mem.inst.cmd.I.rd) { // not x0
-            switch(pr.ex_mem.inst.rough) { // inst that get ans in EX
-            case LUI:
-            case AUIPC:
-            case JAL:
-            case JALR:
-            case R_I_func:
-            case R_R_func: // no load inst
-                switch(ret.rough) {
-                case JALR:
-                    if(ret.cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd) {
-                        ret.rs1 = pr.ex_mem.ans;
-                    }
-                    break;
-                // case B_func:
-                //     if(ret.cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd) ret.rs1 = pr.ex_mem.ans;
-                //     if(ret.cmd.R.rs2 == pr.ex_mem.inst.cmd.I.rd) ret.rs2 = pr.ex_mem.ans;
-                //     break;
-                // default: break;
-                }
-                break;
-            default: break;
-            }
-        }
+        // if(pr.ex_mem.inst.cmd.I.rd) { // not x0
+        //     switch(pr.ex_mem.inst.rough) { // inst that get ans in EX
+        //     case LUI:
+        //     case AUIPC:
+        //     case JAL:
+        //     case JALR:
+        //     case R_I_func:
+        //     case R_R_func: // no load inst
+        //         switch(ret.rough) {
+        //         case JALR:
+        //             if(ret.cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd) {
+        //                 ret.rs1 = pr.ex_mem.ans;
+        //             }
+        //             break;
+        //         // case B_func:
+        //         //     if(ret.cmd.R.rs1 == pr.ex_mem.inst.cmd.I.rd) ret.rs1 = pr.ex_mem.ans;
+        //         //     if(ret.cmd.R.rs2 == pr.ex_mem.inst.cmd.I.rd) ret.rs2 = pr.ex_mem.ans;
+        //         //     break;
+        //         // default: break;
+        //         }
+        //         break;
+        //     default: break;
+        //     }
+        // }
         // Forwarding end
 
     // JALR & B_func operations end
 
-        // REAL ID part
-        switch(cmd.B.opcode) {
-        case 0b0110111:
-            ret.imm = cmd.U.getImm();
-            break;
-        case 0b0010111:
-            ret.imm = cmd.U.getImm();
-            ret.new_pc += ret.imm - 4;
-            // ret.cond = 1;
-            ret.branch_return = ret.new_pc; // adds this offset to the pc, then places the result in register rd.
-            break;
-        case 0b1101111:
-            ret.imm = cmd.J.getImm();
-            ret.branch_return = reg.pc;
-            ret.new_pc += ret.imm - 4;
-            // debug << "here: " << ret.new_pc << std::endl;
-            // ret.cond = 1;
-            break;
-        case 0b1100111:
-            ret.imm = cmd.I.getImm();
-            ret.branch_return = reg.pc;
-            ret.new_pc = ((ret.imm + ret.rs1) >> 1) << 1; // set the least bit to 0
-            // ret.cond = 1;
-            break;
-        case 0b1100011: // finish the branch inst at this stage
-            ret.imm = cmd.B.getImm();
-            break;
-        case 0b0000011:
-            ret.imm = cmd.I.getImm();
-            break;
-        case 0b0100011:
-            ret.imm = cmd.S.getImm();
-            break;
-        case 0b0010011:
-            ret.imm = cmd.I.getImm();
-            break;
-        case 0b0110011:
-            break;
-        default:
-            // debug << std::bitset<7>(cmd.B.opcode) << std::endl;
-            assert(0); break;
-        }
-
-        if((ret.rough == AUIPC || ret.rough == JAL || ret.rough == JALR) && ret.new_pc != new_reg.pc) { // AUIPC/JAL/JALR
+        new_pr.id_ex = ret;
+        if((ret.rough == AUIPC || ret.rough == JAL) && ret.new_pc != new_reg.pc) { // AUIPC/JAL
             // debug << "id throw!: " << new_reg.pc << " " << ret.new_pc << std::endl;
             new_reg.pc = ret.new_pc;
-            new_pr.id_ex = ret;
             throw stall_throw(1); // re-IF
         }
+        new_reg.pc = ret.new_pc; // used for branch hazard
 
         // debug << ":" << new_reg.pc << std::endl;
-        new_reg.pc = ret.new_pc; // used for branch hazard
 
         // debug << ROUGH_NAMEs[ret.rough] << " " << ret.fine << " " << std::hex << " " << cmd.B.rs1 << "#" << ret.rs1 << " " << cmd.B.rs2 << "#" << ret.rs2 << " " << ret.new_pc << std::endl;
 
 
-        new_pr.id_ex = ret;
     }
 };
 const int Instruction_Decorder::OPCODE[] = {
@@ -353,7 +357,7 @@ public:
     void exec(const Pipeline_Register &pr, Pipeline_Register &new_pr, const Register &reg, Register_Tmp &new_reg, Predictor &pred) {
         if(pr.id_ex.cmd.data == 0u) { new_pr.ex_mem = EX_MEM(); return; }
         if(pr.stalled == 2) {
-            new_pr.stalled = 0;
+            ++new_pr.stalled;
             return;
         }
 
@@ -439,8 +443,14 @@ public:
             break;
         case AUIPC:
         case JAL:
-        case JALR:
             ret.ans = inst.branch_return; // if it's a branch inst, the return value is the branch_return
+            break;
+        case JALR:
+            ret.ans = inst.new_pc; // original pc + 4
+            new_reg.pc = inst.new_pc = ((inst.imm + inst.rs1) >> 1) << 1; // set the least bit to 0
+            new_pr.ex_mem = ret;
+            new_pr.id_ex = NOP;
+            throw stall_throw(1); // re-IF
             break;
         case B_func:
             switch((B_FUNCs)inst.fine) {
@@ -545,7 +555,7 @@ public:
             } else {
                 pred.feedback(pr.id_ex.new_pc - 4, inst.new_pc, false); // not taken
             }
-            // pred.feedback_rate(ret.new_pc == new_reg.pc);
+            // pred.feedback_rate(inst.new_pc == inst.predicted_pc);
             if(inst.new_pc != inst.predicted_pc) { // the prediction is NOT correct!
                 // debug << "ex throw! " << inst.new_pc << " " << inst.predicted_pc << std::endl;
                 new_pr.id_ex = NOP; // let the next inst be NOP
@@ -561,7 +571,7 @@ public:
     void access(const Pipeline_Register &pr, Pipeline_Register &new_pr, Memory &mem) {
         if(pr.ex_mem.inst.cmd.data == 0u) { new_pr.mem_wb = MEM_WB(); return; }
         if(pr.stalled == 3) {
-            new_pr.stalled = 0;
+            ++new_pr.stalled;
             return;
         }
         // debug << "MEMing...";
@@ -631,8 +641,12 @@ public:
 
 class Write_Backer {    // excellent name though
 public:
-    void write(const Pipeline_Register &pr, Register_Tmp &new_reg) {
+    void write(const Pipeline_Register &pr, Pipeline_Register &new_pr, Register_Tmp &new_reg) {
         if(pr.mem_wb.inst.cmd.data == 0u) return;
+        if(pr.stalled == 4) {
+            new_pr.stalled = 0;
+            return;
+        }
         // debug << "WBing..." << std::endl;
 
 
