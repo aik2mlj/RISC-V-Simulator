@@ -46,9 +46,14 @@ public:
 
 class Register_Tmp {
 public:
-    uint pc, rd;
+    uint pc;
+    uint rd;
     int new_value;
-    Register_Tmp() { pc = rd = 0; new_value = 0; }
+    Register_Tmp() {
+        pc = 0;
+        rd = 0;
+        new_value = 0;
+    }
 };
 
 class Register {
@@ -58,7 +63,7 @@ public:
     Register() { memset(reg, 0, sizeof(reg)); pc = 0; }
     Register &operator=(const Register_Tmp &o) {
         pc = o.pc;
-        reg[o.rd] = o.new_value;
+        // reg[o.rd] = o.new_value;
         return *this;
     }
     int &operator[](const uint &p) { return reg[p]; }

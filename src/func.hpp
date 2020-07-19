@@ -263,42 +263,42 @@ public:
 
         // ID Forwarding (get renewed data in MEM_WB)
         // debug << "@ " << pr.mem_wb.inst.rough << " " << ret.rough << " " << ret.cmd.R.rs1 << " " << pr.mem_wb.inst.cmd.I.rd << std::endl;
-        if(pr.mem_wb.inst.cmd.I.rd) { // not x0
-            switch(pr.mem_wb.inst.rough) { // insts that get ans in MEM
-            case LUI:
-            case AUIPC:
-            case JAL:
-            case JALR:
-            case R_I_func:
-            case R_R_func:
-            case LOAD_func: // here load inst can also affect the reg
-                switch(ret.rough) {
-                case JALR:
-                case LOAD_func:
-                case R_I_func: // rs1
-                    if(ret.cmd.R.rs1 == pr.mem_wb.inst.cmd.I.rd) {
-                        ret.rs1 = pr.mem_wb.data;
-                        // debug << "ID forwarding." << std::endl;
-                    }
-                    break;
-                case B_func:
-                case STORE_func:
-                case R_R_func: // rs1 & rs2
-                    if(ret.cmd.R.rs1 == pr.mem_wb.inst.cmd.I.rd) {
-                        ret.rs1 = pr.mem_wb.data;
-                        // debug << "ID forwarding." << std::endl;
-                    }
-                    if(ret.cmd.R.rs2 == pr.mem_wb.inst.cmd.I.rd) {
-                        ret.rs2 = pr.mem_wb.data;
-                        // debug << "ID forwarding." << std::endl;
-                    }
-                    break;
-                default: break;
-                }
-                break;
-            default: break;
-            }
-        }
+        // if(pr.mem_wb.inst.cmd.I.rd) { // not x0
+        //     switch(pr.mem_wb.inst.rough) { // insts that get ans in MEM
+        //     case LUI:
+        //     case AUIPC:
+        //     case JAL:
+        //     case JALR:
+        //     case R_I_func:
+        //     case R_R_func:
+        //     case LOAD_func: // here load inst can also affect the reg
+        //         switch(ret.rough) {
+        //         case JALR:
+        //         case LOAD_func:
+        //         case R_I_func: // rs1
+        //             if(ret.cmd.R.rs1 == pr.mem_wb.inst.cmd.I.rd) {
+        //                 ret.rs1 = pr.mem_wb.data;
+        //                 // debug << "ID forwarding." << std::endl;
+        //             }
+        //             break;
+        //         case B_func:
+        //         case STORE_func:
+        //         case R_R_func: // rs1 & rs2
+        //             if(ret.cmd.R.rs1 == pr.mem_wb.inst.cmd.I.rd) {
+        //                 ret.rs1 = pr.mem_wb.data;
+        //                 // debug << "ID forwarding." << std::endl;
+        //             }
+        //             if(ret.cmd.R.rs2 == pr.mem_wb.inst.cmd.I.rd) {
+        //                 ret.rs2 = pr.mem_wb.data;
+        //                 // debug << "ID forwarding." << std::endl;
+        //             }
+        //             break;
+        //         default: break;
+        //         }
+        //         break;
+        //     default: break;
+        //     }
+        // }
         // Forwarding for JALR & B_func
         // if(pr.ex_mem.inst.cmd.I.rd) { // not x0
         //     switch(pr.ex_mem.inst.rough) { // inst that get ans in EX
@@ -367,38 +367,60 @@ public:
         // debug << "EXing..." << inst.rs1 << " " << inst.rs2 << std::endl;
 
         // Forwarding
-        if(pr.mem_wb.inst.cmd.I.rd) { // not x0
-            switch(pr.mem_wb.inst.rough) { // inst that get ans in MEM
-            case LUI:
-            case AUIPC:
-            case JAL:
-            case JALR:
-            case R_I_func:
-            case R_R_func:
-            case LOAD_func: // here load inst can also affect the reg
-                switch(inst.rough) {
-                case JALR:
-                case LOAD_func:
-                case R_I_func: // rs1-only funcs
-                    if(inst.cmd.R.rs1 == pr.mem_wb.inst.cmd.I.rd) {
-                        // debug << "rs1 Forwarding: " << inst.rs1 << " " << pr.mem_wb.data << std::endl;
-                        inst.rs1 = pr.mem_wb.data;
-                    }
-                    break;
-                case B_func:
-                case STORE_func:
-                case R_R_func: // rs1 & rs2
-                    if(inst.cmd.R.rs1 == pr.mem_wb.inst.cmd.I.rd) inst.rs1 = pr.mem_wb.data;
-                    if(inst.cmd.R.rs2 == pr.mem_wb.inst.cmd.I.rd) {
-                        // debug << "R_R forwarding2_: " << inst.rs2 << " " << pr.mem_wb.data << std::endl;
-                        inst.rs2 = pr.mem_wb.data;
-                    }
-                    break;
-                default: break;
-                }
-                break;
-            default: break;
+        // if(pr.mem_wb.inst.cmd.I.rd) { // not x0
+        //     switch(pr.mem_wb.inst.rough) { // inst that get ans in MEM
+        //     case LUI:
+        //     case AUIPC:
+        //     case JAL:
+        //     case JALR:
+        //     case R_I_func:
+        //     case R_R_func:
+        //     case LOAD_func: // here load inst can also affect the reg
+        //         switch(inst.rough) {
+        //         case JALR:
+        //         case LOAD_func:
+        //         case R_I_func: // rs1-only funcs
+        //             if(inst.cmd.R.rs1 == pr.mem_wb.inst.cmd.I.rd) {
+        //                 // debug << "rs1 Forwarding: " << inst.rs1 << " " << pr.mem_wb.data << std::endl;
+        //                 inst.rs1 = pr.mem_wb.data;
+        //             }
+        //             break;
+        //         case B_func:
+        //         case STORE_func:
+        //         case R_R_func: // rs1 & rs2
+        //             if(inst.cmd.R.rs1 == pr.mem_wb.inst.cmd.I.rd) inst.rs1 = pr.mem_wb.data;
+        //             if(inst.cmd.R.rs2 == pr.mem_wb.inst.cmd.I.rd) {
+        //                 // debug << "R_R forwarding2_: " << inst.rs2 << " " << pr.mem_wb.data << std::endl;
+        //                 inst.rs2 = pr.mem_wb.data;
+        //             }
+        //             break;
+        //         default: break;
+        //         }
+        //         break;
+        //     default: break;
+        //     }
+        // }
+        switch(inst.rough) {
+        case JALR:
+        case LOAD_func:
+        case R_I_func: // rs1-only funcs
+            if(inst.cmd.R.rs1 == new_reg.rd) {
+                inst.rs1 = new_reg.new_value;
             }
+            break;
+        case B_func:
+        case STORE_func:
+        case R_R_func: // rs1 & rs2
+            if(inst.cmd.R.rs1 == new_reg.rd) {
+                // debug << "R_R forwarding1: " << pr.ex_mem.ans;
+                inst.rs1 = new_reg.new_value;
+            }
+            if(inst.cmd.R.rs2 == new_reg.rd) {
+                // debug << "R_R forwarding2: " << inst.rs2 << " " << pr.ex_mem.ans;
+                inst.rs2 = new_reg.new_value;
+            }
+            break;
+        default: break;
         }
         if(pr.ex_mem.inst.cmd.I.rd) { // not x0
             switch(pr.ex_mem.inst.rough) { // inst that get ans in EX
@@ -641,7 +663,7 @@ public:
 
 class Write_Backer {    // excellent name though
 public:
-    void write(const Pipeline_Register &pr, Pipeline_Register &new_pr, Register_Tmp &new_reg) {
+    void write(const Pipeline_Register &pr, Pipeline_Register &new_pr, Register &reg, Register_Tmp &new_reg) {
         if(pr.mem_wb.inst.cmd.data == 0u) return;
         if(pr.stalled == 4) {
             new_pr.stalled = 0;
@@ -655,6 +677,7 @@ public:
             if(rd) {
                 new_reg.rd = rd;
                 new_reg.new_value = pr.mem_wb.data; // discard modification on x0
+                reg[rd] = pr.mem_wb.data;
             }
             // debug << rd << "#" << reg[rd] << std::endl;
         }
